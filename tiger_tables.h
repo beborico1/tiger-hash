@@ -25,7 +25,7 @@
 // Define L64 macro for 64-bit literals
 #define L64(x) x##ULL
 
-static const uint64_t table[4 * 256] = {
+static const uint64_t tiger_table[4 * 256] = {
 	L64(0x02AAB17CF7E90C5E) /*    0 */,
 	L64(0xAC424B03E243A8EC) /*    1 */,
 	L64(0x72CD5BE30DD5FCD3) /*    2 */,
