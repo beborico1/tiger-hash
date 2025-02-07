@@ -13,6 +13,20 @@
 __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
+// Helper function to generate test strings
+__device__ void generate_string(char *buffer, size_t length, uint64_t index)
+{
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const int charset_size = 62;
+
+    for (size_t i = 0; i < length; i++)
+    {
+        buffer[i] = charset[index % charset_size];
+        index /= charset_size;
+    }
+    buffer[length] = '\0';
+}
+
 // Atomic add for 64-bit integers
 __device__ unsigned long long atomicAdd64(unsigned long long *address, unsigned long long val)
 {
@@ -23,6 +37,57 @@ __device__ unsigned long long atomicAdd64(unsigned long long *address, unsigned 
         old = atomicCAS(address, assumed, val + assumed);
     } while (assumed != old);
     return old;
+}
+
+// Bruteforce kernel
+__global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *found,
+                                  char *result_string, unsigned long long *attempts)
+{
+    uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t stride = gridDim.x * blockDim.x;
+    uint64_t current_index = start_index + tid;
+
+    GPU_TIGER_CTX context;
+    char test_string[32]; // Max length we'll test
+    unsigned char hash[24];
+
+    while (!(*found))
+    {
+        // Generate test string from current_index
+        generate_string(test_string, length, current_index);
+
+        // Compute hash
+        TIGERInit_gpu(&context);
+        TIGERUpdate_gpu(&context, (const unsigned char *)test_string, length);
+        TIGER192Final_gpu(hash, &context);
+
+        // Increment attempts counter using our custom atomic add
+        atomicAdd64(attempts, 1ULL);
+
+        // Compare hash with target
+        bool match = true;
+        for (int i = 0; i < 24; i++)
+        {
+            if (hash[i] != d_target[i])
+            {
+                match = false;
+                break;
+            }
+        }
+
+        if (match)
+        {
+            *found = true;
+            // Copy the found string to result
+            for (size_t i = 0; i <= length; i++)
+            {
+                result_string[i] = test_string[i];
+            }
+            return;
+        }
+
+        current_index += stride;
+    }
 }
 
 bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time_limit,
@@ -97,71 +162,6 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
     cudaFree(d_attempts);
 
     return h_found;
-}
-
-// Bruteforce kernel
-__global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *found,
-                                  char *result_string, uint64_t *attempts)
-{
-    uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-    uint64_t stride = gridDim.x * blockDim.x;
-    uint64_t current_index = start_index + tid;
-
-    GPU_TIGER_CTX context;
-    char test_string[32]; // Max length we'll test
-    unsigned char hash[24];
-
-    while (!(*found))
-    {
-        // Generate test string from current_index
-        generate_string(test_string, length, current_index);
-
-        // Compute hash
-        TIGERInit_gpu(&context);
-        TIGERUpdate_gpu(&context, (const unsigned char *)test_string, length);
-        TIGER192Final_gpu(hash, &context);
-
-        // Increment attempts counter using our custom atomic add
-        atomicAdd64(attempts, 1ULL);
-
-        // Compare hash with target
-        bool match = true;
-        for (int i = 0; i < 24; i++)
-        {
-            if (hash[i] != d_target[i])
-            {
-                match = false;
-                break;
-            }
-        }
-
-        if (match)
-        {
-            *found = true;
-            // Copy the found string to result
-            for (size_t i = 0; i <= length; i++)
-            {
-                result_string[i] = test_string[i];
-            }
-            return;
-        }
-
-        current_index += stride;
-    }
-}
-
-// Helper function to generate test strings
-__device__ void generate_string(char *buffer, size_t length, uint64_t index)
-{
-    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const int charset_size = 62;
-
-    for (size_t i = 0; i < length; i++)
-    {
-        buffer[i] = charset[index % charset_size];
-        index /= charset_size;
-    }
-    buffer[length] = '\0';
 }
 
 // Host-side charset initialization
