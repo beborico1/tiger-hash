@@ -5,6 +5,7 @@
 #include "tiger_gpu.h"
 #include <cuda_runtime.h>
 #include "tiger.h"
+#include "tiger_common.h"
 
 // Constants for GPU bruteforce
 #define THREADS_PER_BLOCK 256
