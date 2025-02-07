@@ -13,92 +13,18 @@
 __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
-// Helper function to generate test strings
-__device__ void generate_string(char *buffer, size_t length, uint64_t index)
+// Atomic add for 64-bit integers
+__device__ unsigned long long atomicAdd64(unsigned long long *address, unsigned long long val)
 {
-    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const int charset_size = 62;
-
-    for (size_t i = 0; i < length; i++)
+    unsigned long long old = *address, assumed;
+    do
     {
-        buffer[i] = charset[index % charset_size];
-        index /= charset_size;
-    }
-    buffer[length] = '\0';
+        assumed = old;
+        old = atomicCAS(address, assumed, val + assumed);
+    } while (assumed != old);
+    return old;
 }
 
-// Host-side charset initialization
-void initialize_charset()
-{
-    char charset[CHARSET_SIZE];
-    int idx = 0;
-
-    // Add lowercase letters
-    for (char c = 'a'; c <= 'z'; c++)
-    {
-        charset[idx++] = c;
-    }
-
-    // Add uppercase letters
-    for (char c = 'A'; c <= 'Z'; c++)
-    {
-        charset[idx++] = c;
-    }
-
-    // Add numbers
-    for (char c = '0'; c <= '9'; c++)
-    {
-        charset[idx++] = c;
-    }
-
-    cudaMemcpyToSymbol(d_charset, charset, CHARSET_SIZE);
-}
-
-__device__ bool compare_hash(unsigned char *hash1, const unsigned char *hash2)
-{
-    for (int i = 0; i < 24; i++)
-    {
-        if (hash1[i] != hash2[i])
-            return false;
-    }
-    return true;
-}
-
-// Kernel for bruteforce
-__global__ void bruteforce_kernel(size_t length, uint64_t start_index, volatile bool *found,
-                                  char *result_string, uint64_t *attempts)
-{
-    uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-    uint64_t stride = gridDim.x * blockDim.x;
-    uint64_t current_index = start_index + tid;
-
-    GPU_TIGER_CTX context;
-    char test_string[32]; // Max length we'll test
-    unsigned char hash[24];
-
-    while (!(*found))
-    {
-        generate_string(test_string, length, current_index);
-
-        // Compute hash
-        TIGERInit_gpu(&context);
-        TIGERUpdate_gpu(&context, (unsigned char *)test_string, length);
-        TIGER192Final_gpu(hash, &context);
-
-        atomicAdd((unsigned long long *)attempts, 1ULL);
-
-        if (compare_hash(hash, d_target))
-        {
-            *found = true;
-            memcpy(result_string, test_string, length + 1);
-            break;
-        }
-
-        current_index += stride;
-    }
-}
-
-// Host-side bruteforce function
 bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time_limit,
                     char *result, uint64_t *total_attempts)
 {
@@ -195,8 +121,8 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
         TIGERUpdate_gpu(&context, (const unsigned char *)test_string, length);
         TIGER192Final_gpu(hash, &context);
 
-        // Increment attempts counter
-        atomicAdd(attempts, 1ULL);
+        // Increment attempts counter using our custom atomic add
+        atomicAdd64(attempts, 1ULL);
 
         // Compare hash with target
         bool match = true;
@@ -218,6 +144,91 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
                 result_string[i] = test_string[i];
             }
             return;
+        }
+
+        current_index += stride;
+    }
+}
+
+// Helper function to generate test strings
+__device__ void generate_string(char *buffer, size_t length, uint64_t index)
+{
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const int charset_size = 62;
+
+    for (size_t i = 0; i < length; i++)
+    {
+        buffer[i] = charset[index % charset_size];
+        index /= charset_size;
+    }
+    buffer[length] = '\0';
+}
+
+// Host-side charset initialization
+void initialize_charset()
+{
+    char charset[CHARSET_SIZE];
+    int idx = 0;
+
+    // Add lowercase letters
+    for (char c = 'a'; c <= 'z'; c++)
+    {
+        charset[idx++] = c;
+    }
+
+    // Add uppercase letters
+    for (char c = 'A'; c <= 'Z'; c++)
+    {
+        charset[idx++] = c;
+    }
+
+    // Add numbers
+    for (char c = '0'; c <= '9'; c++)
+    {
+        charset[idx++] = c;
+    }
+
+    cudaMemcpyToSymbol(d_charset, charset, CHARSET_SIZE);
+}
+
+__device__ bool compare_hash(unsigned char *hash1, const unsigned char *hash2)
+{
+    for (int i = 0; i < 24; i++)
+    {
+        if (hash1[i] != hash2[i])
+            return false;
+    }
+    return true;
+}
+
+// Kernel for bruteforce
+__global__ void bruteforce_kernel(size_t length, uint64_t start_index, volatile bool *found,
+                                  char *result_string, uint64_t *attempts)
+{
+    uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t stride = gridDim.x * blockDim.x;
+    uint64_t current_index = start_index + tid;
+
+    GPU_TIGER_CTX context;
+    char test_string[32]; // Max length we'll test
+    unsigned char hash[24];
+
+    while (!(*found))
+    {
+        generate_string(test_string, length, current_index);
+
+        // Compute hash
+        TIGERInit_gpu(&context);
+        TIGERUpdate_gpu(&context, (unsigned char *)test_string, length);
+        TIGER192Final_gpu(hash, &context);
+
+        atomicAdd((unsigned long long *)attempts, 1ULL);
+
+        if (compare_hash(hash, d_target))
+        {
+            *found = true;
+            memcpy(result_string, test_string, length + 1);
+            break;
         }
 
         current_index += stride;
