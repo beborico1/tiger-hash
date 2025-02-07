@@ -2,7 +2,7 @@
 #include <string.h>
 #include <time.h>
 #include <cuda_runtime.h>
-#include "tiger.h"
+// #include "tiger.h"
 #include "tiger_tables.h"
 
 // Constants
