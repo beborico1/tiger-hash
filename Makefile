@@ -8,8 +8,8 @@ NVCCFLAGS = -O3 -I.
 CUDA_ARCH ?= -arch=sm_89
 
 # Source files
-CUDA_SOURCES = tiger_cuda.cu tiger_bruteforce_gpu.cu
-C_SOURCES = tiger_impl.c
+CUDA_SOURCES = tiger_gpu.cu tiger_bruteforce_gpu.cu
+C_SOURCES = tiger.c
 
 # Object files
 CUDA_OBJECTS = $(CUDA_SOURCES:.cu=.o)

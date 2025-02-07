@@ -1,61 +1,45 @@
-// tiger_gpu.cu
-#include "tiger_gpu.h"
+#include "tiger_cuda.h"
 #include "tiger_tables.h"
 #include <stdio.h>
-#include <string.h>
-#include "tiger_common.h"
 
-// Tiger S-box tables in constant memory
 __constant__ uint64_t d_table[4 * 256];
 
-// Macros for GPU implementation
-#define GPU_SAVE_ABC \
-    aa = a;          \
-    bb = b;          \
-    cc = c;
+// Round macros for GPU implementation
+#define ROUND(a, b, c, x, mul)                                                         \
+    {                                                                                  \
+        c ^= x;                                                                        \
+        a -= d_table[(unsigned char)(c)] ^                                             \
+             d_table[256 + (unsigned char)(((uint32_t)(c)) >> (2 * 8))] ^              \
+             d_table[512 + (unsigned char)((c) >> (4 * 8))] ^                          \
+             d_table[768 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (2 * 8))];  \
+        b += d_table[768 + (unsigned char)(((uint32_t)(c)) >> (1 * 8))] ^              \
+             d_table[512 + (unsigned char)(((uint32_t)(c)) >> (3 * 8))] ^              \
+             d_table[256 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (1 * 8))] ^ \
+             d_table[(unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (3 * 8))];        \
+        b *= mul;                                                                      \
+    }
 
-#define GPU_ROUND(a, b, c, x, mul)                                                 \
-    c ^= x;                                                                        \
-    a -= d_table[(unsigned char)(c)] ^                                             \
-         d_table[256 + (unsigned char)(((uint32_t)(c)) >> (2 * 8))] ^              \
-         d_table[512 + (unsigned char)((c) >> (4 * 8))] ^                          \
-         d_table[768 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (2 * 8))];  \
-    b += d_table[768 + (unsigned char)(((uint32_t)(c)) >> (1 * 8))] ^              \
-         d_table[512 + (unsigned char)(((uint32_t)(c)) >> (3 * 8))] ^              \
-         d_table[256 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (1 * 8))] ^ \
-         d_table[(unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (3 * 8))];        \
-    b *= mul;
+#define KEY_SCHEDULE                      \
+    {                                     \
+        x0 -= x7 ^ 0xA5A5A5A5A5A5A5A5ULL; \
+        x1 ^= x0;                         \
+        x2 += x1;                         \
+        x3 -= x2 ^ ((~x1) << 19);         \
+        x4 ^= x3;                         \
+        x5 += x4;                         \
+        x6 -= x5 ^ ((~x4) >> 23);         \
+        x7 ^= x6;                         \
+        x0 += x7;                         \
+        x1 -= x0 ^ ((~x7) << 19);         \
+        x2 ^= x1;                         \
+        x3 += x2;                         \
+        x4 -= x3 ^ ((~x2) >> 23);         \
+        x5 ^= x4;                         \
+        x6 += x5;                         \
+        x7 -= x6 ^ 0x0123456789ABCDEFULL; \
+    }
 
-#define GPU_PASS(a, b, c, mul)  \
-    GPU_ROUND(a, b, c, x0, mul) \
-    GPU_ROUND(b, c, a, x1, mul) \
-    GPU_ROUND(c, a, b, x2, mul) \
-    GPU_ROUND(a, b, c, x3, mul) \
-    GPU_ROUND(b, c, a, x4, mul) \
-    GPU_ROUND(c, a, b, x5, mul) \
-    GPU_ROUND(a, b, c, x6, mul) \
-    GPU_ROUND(b, c, a, x7, mul)
-
-#define GPU_KEY_SCHEDULE              \
-    x0 -= x7 ^ 0xA5A5A5A5A5A5A5A5ULL; \
-    x1 ^= x0;                         \
-    x2 += x1;                         \
-    x3 -= x2 ^ ((~x1) << 19);         \
-    x4 ^= x3;                         \
-    x5 += x4;                         \
-    x6 -= x5 ^ ((~x4) >> 23);         \
-    x7 ^= x6;                         \
-    x0 += x7;                         \
-    x1 -= x0 ^ ((~x7) << 19);         \
-    x2 ^= x1;                         \
-    x3 += x2;                         \
-    x4 -= x3 ^ ((~x2) >> 23);         \
-    x5 ^= x4;                         \
-    x6 += x5;                         \
-    x7 -= x6 ^ 0x0123456789ABCDEFULL;
-
-// GPU implementation of tiger_compress
-__device__ static void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
+__device__ void tiger_compress_gpu(uint64_t *str, uint64_t *state)
 {
     uint64_t a, b, c, aa, bb, cc;
     uint64_t x0, x1, x2, x3, x4, x5, x6, x7;
@@ -73,15 +57,43 @@ __device__ static void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
     x6 = str[6];
     x7 = str[7];
 
-    GPU_SAVE_ABC
+    aa = a;
+    bb = b;
+    cc = c;
 
-    GPU_PASS(a, b, c, 5)
-    GPU_KEY_SCHEDULE
+    // Round 1
+    ROUND(a, b, c, x0, 5)
+    ROUND(b, c, a, x1, 5)
+    ROUND(c, a, b, x2, 5)
+    ROUND(a, b, c, x3, 5)
+    ROUND(b, c, a, x4, 5)
+    ROUND(c, a, b, x5, 5)
+    ROUND(a, b, c, x6, 5)
+    ROUND(b, c, a, x7, 5)
 
-    GPU_PASS(c, a, b, 7)
-    GPU_KEY_SCHEDULE
+    KEY_SCHEDULE
 
-    GPU_PASS(b, c, a, 9)
+    // Round 2
+    ROUND(c, a, b, x0, 7)
+    ROUND(a, b, c, x1, 7)
+    ROUND(b, c, a, x2, 7)
+    ROUND(c, a, b, x3, 7)
+    ROUND(a, b, c, x4, 7)
+    ROUND(b, c, a, x5, 7)
+    ROUND(c, a, b, x6, 7)
+    ROUND(a, b, c, x7, 7)
+
+    KEY_SCHEDULE
+
+    // Round 3
+    ROUND(b, c, a, x0, 9)
+    ROUND(c, a, b, x1, 9)
+    ROUND(a, b, c, x2, 9)
+    ROUND(b, c, a, x3, 9)
+    ROUND(c, a, b, x4, 9)
+    ROUND(a, b, c, x5, 9)
+    ROUND(b, c, a, x6, 9)
+    ROUND(c, a, b, x7, 9)
 
     a ^= aa;
     b -= bb;
@@ -92,7 +104,6 @@ __device__ static void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
     state[2] = c;
 }
 
-// Define the actual device functions that were declared in tiger_gpu.h
 __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context)
 {
     context->state[0] = 0x0123456789ABCDEFULL;
@@ -129,19 +140,20 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
                 context->buffer[context->length + j] = input[j];
             }
 
-            tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
+            tiger_compress_gpu((uint64_t *)context->buffer, context->state);
             context->passed += 512;
             i = fill;
         }
 
-        for (; i + 64 <= len; i += 64)
+        while (i + 64 <= len)
         {
             for (int j = 0; j < 64; j++)
             {
                 context->buffer[j] = input[i + j];
             }
-            tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
+            tiger_compress_gpu((uint64_t *)context->buffer, context->state);
             context->passed += 512;
+            i += 64;
         }
 
         context->length = len - i;
@@ -154,8 +166,7 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
 
 __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
 {
-    context->buffer[context->length] = 0x01;
-    context->length++;
+    context->buffer[context->length++] = 0x01;
 
     for (size_t i = context->length; i < 64; i++)
     {
@@ -164,7 +175,7 @@ __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *conte
 
     if (context->length > 56)
     {
-        tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
+        tiger_compress_gpu((uint64_t *)context->buffer, context->state);
         for (int i = 0; i < 64; i++)
         {
             context->buffer[i] = 0;
@@ -177,7 +188,7 @@ __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *conte
         context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
     }
 
-    tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
+    tiger_compress_gpu((uint64_t *)context->buffer, context->state);
 
     for (int i = 0; i < 24; i++)
     {
@@ -185,14 +196,14 @@ __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *conte
     }
 }
 
-void initialize_gpu_tables()
+// Host initialization function
+__host__ void initialize_gpu_tables(void)
 {
-    static int tables_initialized = 0;
-    if (!tables_initialized)
+    cudaError_t err = cudaMemcpyToSymbol(d_table, tiger_table, sizeof(uint64_t) * 4 * 256);
+    if (err != cudaSuccess)
     {
-        cudaError_t err = cudaMemcpyToSymbol(d_table, table, sizeof(uint64_t) * 4 * 256);
-        checkCudaError(err, "Failed to copy S-box tables to GPU");
-        tables_initialized = 1;
+        fprintf(stderr, "Failed to copy table to GPU: %s\n", cudaGetErrorString(err));
+        exit(1);
     }
 }
 
@@ -203,78 +214,4 @@ void checkCudaError(cudaError_t err, const char *msg)
         fprintf(stderr, "CUDA Error: %s: %s\n", msg, cudaGetErrorString(err));
         exit(1);
     }
-}
-
-// Add these kernel functions:
-__global__ void tiger_init_kernel(GPU_TIGER_CTX *context)
-{
-    TIGERInit_gpu(context);
-}
-
-__global__ void tiger_update_kernel(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
-{
-    TIGERUpdate_gpu(context, input, len);
-}
-
-__global__ void tiger_final_kernel(GPU_TIGER_CTX *context, unsigned char *digest)
-{
-    TIGER192Final_gpu(digest, context);
-}
-
-void host_TIGERInit_gpu(GPU_TIGER_CTX *context)
-{
-    GPU_TIGER_CTX *d_context;
-    cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
-
-    // Launch kernel
-    dim3 block(1);
-    dim3 grid(1);
-    tiger_init_kernel<<<grid, block>>>(d_context);
-
-    // Copy result back
-    cudaMemcpy(context, d_context, sizeof(GPU_TIGER_CTX), cudaMemcpyDeviceToHost);
-    cudaFree(d_context);
-}
-
-void host_TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
-{
-    GPU_TIGER_CTX *d_context;
-    unsigned char *d_input;
-
-    cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
-    cudaMalloc(&d_input, len);
-
-    cudaMemcpy(d_context, context, sizeof(GPU_TIGER_CTX), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_input, input, len, cudaMemcpyHostToDevice);
-
-    // Launch kernel
-    dim3 block(1);
-    dim3 grid(1);
-    tiger_update_kernel<<<grid, block>>>(d_context, d_input, len);
-
-    cudaMemcpy(context, d_context, sizeof(GPU_TIGER_CTX), cudaMemcpyDeviceToHost);
-
-    cudaFree(d_context);
-    cudaFree(d_input);
-}
-
-void host_TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
-{
-    GPU_TIGER_CTX *d_context;
-    unsigned char *d_digest;
-
-    cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
-    cudaMalloc(&d_digest, 24);
-
-    cudaMemcpy(d_context, context, sizeof(GPU_TIGER_CTX), cudaMemcpyHostToDevice);
-
-    // Launch kernel
-    dim3 block(1);
-    dim3 grid(1);
-    tiger_final_kernel<<<grid, block>>>(d_context, d_digest);
-
-    cudaMemcpy(digest, d_digest, 24, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_context);
-    cudaFree(d_digest);
 }
