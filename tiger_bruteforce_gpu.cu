@@ -388,7 +388,6 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
 
     return h_found;
 }
-
 int main()
 {
     srand(time(NULL));
@@ -407,7 +406,7 @@ int main()
         // Create a random target string and its hash
         char target_string[32];
         unsigned char target_hash[24];
-        TIGER_CTX context;
+        GPU_TIGER_CTX context; // Changed from TIGER_CTX to GPU_TIGER_CTX
 
         // Generate random target string
         for (size_t i = 0; i < length; i++)
