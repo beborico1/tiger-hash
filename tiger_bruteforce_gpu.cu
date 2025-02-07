@@ -48,8 +48,8 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
     uint64_t stride = gridDim.x * blockDim.x;
     uint64_t current_index = start_index + tid;
 
-    GPU_TIGER_CTX context; // This needs to be used
-    char test_string[32];
+    GPU_TIGER_CTX context;
+    char test_string[32]; // Max length we'll test
     unsigned char hash[24];
 
     while (!(*found))
@@ -57,10 +57,10 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
         // Generate test string from current_index
         generate_string(test_string, length, current_index);
 
-        // Use the context for hash computation
-        TIGERInit_gpu(&context);
-        TIGERUpdate_gpu(&context, (const unsigned char *)test_string, length);
-        TIGER192Final_gpu(hash, &context);
+        // Compute hash
+        __device__ void TIGERInit_gpu(GPU_TIGER_CTX * context);
+        __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX * context, const unsigned char *input, size_t len);
+        __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
 
         atomicAdd64(attempts, 1ULL);
 
