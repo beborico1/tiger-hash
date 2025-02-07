@@ -1,12 +1,6 @@
 #include "tiger.h"
 #include "tiger_tables.h"
 
-// Define the table pointers
-#define t1 (table)
-#define t2 (table + 256)
-#define t3 (table + 512)
-#define t4 (table + 768)
-
 #if (defined(__APPLE__) || defined(__APPLE_CC__)) && (defined(__BIG_ENDIAN__) || defined(__LITTLE_ENDIAN__))
 #if defined(__LITTLE_ENDIAN__)
 #undef WORDS_BIGENDIAN
@@ -17,7 +11,7 @@
 #endif
 #endif
 
-/* Tiger round macros */
+/* {{{ */
 #define save_abc \
     aa = a;      \
     bb = b;      \
@@ -94,7 +88,6 @@
     x5 = str[5];      \
     x6 = str[6];      \
     x7 = str[7];
-
 #ifdef WORDS_BIGENDIAN
 #define split(str)                                                     \
     {                                                                  \
@@ -129,3 +122,97 @@
         state[1] = b;                                                    \
         state[2] = c;                                                    \
     }
+/* }}} */
+
+static inline void TigerFinalize(TIGER_CTX *context)
+{
+    context->passed += (uint64_t)context->length << 3;
+
+    context->buffer[context->length++] = 0x1;
+    if (context->length % 8)
+    {
+        memset(&context->buffer[context->length], 0, 8 - context->length % 8);
+        context->length += 8 - context->length % 8;
+    }
+
+    if (context->length > 56)
+    {
+        memset(&context->buffer[context->length], 0, 64 - context->length);
+        tiger_compress(context->passes, ((uint64_t *)context->buffer), context->state);
+        memset(context->buffer, 0, 56);
+    }
+    else
+    {
+        memset(&context->buffer[context->length], 0, 56 - context->length);
+    }
+
+#ifndef WORDS_BIGENDIAN
+    memcpy(&context->buffer[56], &context->passed, sizeof(uint64_t));
+#else
+    context->buffer[56] = (unsigned char)(context->passed & 0xff);
+    context->buffer[57] = (unsigned char)((context->passed >> 8) & 0xff);
+    context->buffer[58] = (unsigned char)((context->passed >> 16) & 0xff);
+    context->buffer[59] = (unsigned char)((context->passed >> 24) & 0xff);
+    context->buffer[60] = (unsigned char)((context->passed >> 32) & 0xff);
+    context->buffer[61] = (unsigned char)((context->passed >> 40) & 0xff);
+    context->buffer[62] = (unsigned char)((context->passed >> 48) & 0xff);
+    context->buffer[63] = (unsigned char)((context->passed >> 56) & 0xff);
+#endif
+    tiger_compress(context->passes, ((uint64_t *)context->buffer), context->state);
+}
+
+static inline void TigerDigest(unsigned char *digest_str, unsigned int digest_len, TIGER_CTX *context)
+{
+    unsigned int i;
+    for (i = 0; i < digest_len; ++i)
+    {
+        digest_str[i] = (unsigned char)((context->state[i / 8] >> (8 * (i % 8))) & 0xff);
+    }
+}
+
+void TIGERInit(TIGER_CTX *context)
+{
+    memset(context, 0, sizeof(*context));
+    context->state[0] = L64(0x0123456789ABCDEF);
+    context->state[1] = L64(0xFEDCBA9876543210);
+    context->state[2] = L64(0xF096A5B4C3B2E187);
+}
+
+void TIGERUpdate(TIGER_CTX *context, const unsigned char *input, size_t len)
+{
+    if (context->length + len < 64)
+    {
+        memcpy(&context->buffer[context->length], input, len);
+        context->length += len;
+    }
+    else
+    {
+        size_t i = 0, r = (context->length + len) % 64;
+
+        if (context->length)
+        {
+            i = 64 - context->length;
+            memcpy(&context->buffer[context->length], input, i);
+            tiger_compress(context->passes, ((const uint64_t *)context->buffer), context->state);
+            ZEND_SECURE_ZERO(context->buffer, 64);
+            context->passed += 512;
+        }
+
+        for (; i + 64 <= len; i += 64)
+        {
+            memcpy(context->buffer, &input[i], 64);
+            tiger_compress(context->passes, ((const uint64_t *)context->buffer), context->state);
+            context->passed += 512;
+        }
+        ZEND_SECURE_ZERO(&context->buffer[r], 64 - r);
+        memcpy(context->buffer, &input[i], r);
+        context->length = r;
+    }
+}
+
+void TIGER192Final(unsigned char digest[24], TIGER_CTX *context)
+{
+    TigerFinalize(context);
+    TigerDigest(digest, 24, context);
+    memset(context, 0, sizeof(*context));
+}
