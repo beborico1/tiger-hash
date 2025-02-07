@@ -14,11 +14,6 @@
 __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
-// Device function declarations - these must match the definitions in tiger_gpu.cu
-extern __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context);
-extern __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len);
-extern __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
-
 // Helper function to generate test strings
 __device__ void generate_string(char *buffer, size_t length, uint64_t index)
 {
