@@ -15,6 +15,11 @@
   +----------------------------------------------------------------------+
 */
 
+// tiger_tables.h
+
+// Define L64 macro for 64-bit literals
+#define L64(x) x##ULL
+
 #define t1 (table)
 #define t2 (table + 256)
 #define t3 (table + 256 * 2)
