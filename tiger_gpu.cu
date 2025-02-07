@@ -203,3 +203,77 @@ void checkCudaError(cudaError_t err, const char *msg)
         exit(1);
     }
 }
+
+void host_TIGERInit_gpu(GPU_TIGER_CTX *context)
+{
+    GPU_TIGER_CTX *d_context;
+    cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
+
+    // Launch kernel
+    dim3 block(1);
+    dim3 grid(1);
+    tiger_init_kernel<<<grid, block>>>(d_context);
+
+    // Copy result back
+    cudaMemcpy(context, d_context, sizeof(GPU_TIGER_CTX), cudaMemcpyDeviceToHost);
+    cudaFree(d_context);
+}
+
+void host_TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
+{
+    GPU_TIGER_CTX *d_context;
+    unsigned char *d_input;
+
+    cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
+    cudaMalloc(&d_input, len);
+
+    cudaMemcpy(d_context, context, sizeof(GPU_TIGER_CTX), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_input, input, len, cudaMemcpyHostToDevice);
+
+    // Launch kernel
+    dim3 block(1);
+    dim3 grid(1);
+    tiger_update_kernel<<<grid, block>>>(d_context, d_input, len);
+
+    cudaMemcpy(context, d_context, sizeof(GPU_TIGER_CTX), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_context);
+    cudaFree(d_input);
+}
+
+void host_TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
+{
+    GPU_TIGER_CTX *d_context;
+    unsigned char *d_digest;
+
+    cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
+    cudaMalloc(&d_digest, 24);
+
+    cudaMemcpy(d_context, context, sizeof(GPU_TIGER_CTX), cudaMemcpyHostToDevice);
+
+    // Launch kernel
+    dim3 block(1);
+    dim3 grid(1);
+    tiger_final_kernel<<<grid, block>>>(d_context, d_digest);
+
+    cudaMemcpy(digest, d_digest, 24, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_context);
+    cudaFree(d_digest);
+}
+
+// Add these kernel functions:
+__global__ void tiger_init_kernel(GPU_TIGER_CTX *context)
+{
+    TIGERInit_gpu(context);
+}
+
+__global__ void tiger_update_kernel(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
+{
+    TIGERUpdate_gpu(context, input, len);
+}
+
+__global__ void tiger_final_kernel(GPU_TIGER_CTX *context, unsigned char *digest)
+{
+    TIGER192Final_gpu(digest, context);
+}

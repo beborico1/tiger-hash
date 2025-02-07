@@ -58,9 +58,9 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
         generate_string(test_string, length, current_index);
 
         // Compute hash
-        TIGERInit_gpu(&context);
-        TIGERUpdate_gpu(&context, (const unsigned char *)test_string, length);
-        TIGER192Final_gpu(hash, &context);
+        __device__ void TIGERInit_gpu(GPU_TIGER_CTX * context);
+        __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX * context, const unsigned char *input, size_t len);
+        __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
 
         atomicAdd64(attempts, 1ULL);
 
