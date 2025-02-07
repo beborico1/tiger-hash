@@ -2,7 +2,6 @@
 #include <string.h>
 #include <time.h>
 #include <cuda_runtime.h>
-// #include "tiger.h"
 #include "tiger_tables.h"
 
 // Constants
@@ -15,13 +14,22 @@ __constant__ uint64_t d_table[4 * 256];
 __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
-// GPU context structure
+// GPU context structure - aligned version for both CPU and GPU
 typedef struct __attribute__((aligned(8)))
-{ // Ensure 8-byte alignment
+{
+    uint64_t state[3];
+    uint64_t passed;
+    unsigned char buffer[64]; // Changed from union to direct array for simplicity
+    uint32_t length;
+} GPU_TIGER_CTX; // Renamed to GPU_TIGER_CTX for consistency
+
+// CPU context structure stays the same
+typedef struct __attribute__((aligned(8)))
+{
     uint64_t state[3];
     uint64_t passed;
     union
-    { // Use a union to ensure proper alignment
+    {
         unsigned char bytes[64];
         uint64_t words[8];
     } buffer;
