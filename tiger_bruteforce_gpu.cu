@@ -16,15 +16,13 @@ __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
 // Helper function to generate test strings
+// Modified portion of tiger_bruteforce_gpu.cu
 __device__ void generate_string(char *buffer, size_t length, uint64_t index)
 {
-    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const int charset_size = 62;
-
     for (size_t i = 0; i < length; i++)
     {
-        buffer[i] = charset[index % charset_size];
-        index /= charset_size;
+        buffer[i] = d_charset[index % CHARSET_SIZE];
+        index /= CHARSET_SIZE;
     }
     buffer[length] = '\0';
 }
@@ -49,9 +47,9 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
     uint64_t stride = gridDim.x * blockDim.x;
     uint64_t current_index = start_index + tid;
 
-    GPU_TIGER_CTX context;
     char test_string[32]; // Max length we'll test
     unsigned char hash[24];
+    GPU_TIGER_CTX context;
 
     while (!(*found))
     {
@@ -59,9 +57,9 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
         generate_string(test_string, length, current_index);
 
         // Compute hash
-        __device__ void TIGERInit_gpu(GPU_TIGER_CTX * context);
-        __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX * context, const unsigned char *input, size_t len);
-        __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
+        TIGERInit_gpu(&context);
+        TIGERUpdate_gpu(&context, (const unsigned char *)test_string, length);
+        TIGER192Final_gpu(hash, &context);
 
         atomicAdd64(attempts, 1ULL);
 
