@@ -14,11 +14,6 @@ typedef struct
     uint32_t length;
 } GPU_TIGER_CTX;
 
-// Function declarations for CUDA implementation
-__device__ void TIGERInit_gpu(GPU_TIGER_CTX *context);
-__device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len);
-__device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
-
 // Error checking helper function
 void checkCudaError(cudaError_t err, const char *msg)
 {
