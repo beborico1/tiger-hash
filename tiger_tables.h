@@ -15,15 +15,15 @@
   +----------------------------------------------------------------------+
 */
 
+#ifndef TIGER_TABLES_H
+#define TIGER_TABLES_H
+
+#include <stdint.h>
+
 // tiger_tables.h
 
 // Define L64 macro for 64-bit literals
 #define L64(x) x##ULL
-
-#define t1 (table)
-#define t2 (table + 256)
-#define t3 (table + 256 * 2)
-#define t4 (table + 256 * 3)
 
 static const uint64_t table[4 * 256] = {
 	L64(0x02AAB17CF7E90C5E) /*    0 */,
@@ -1051,3 +1051,10 @@ static const uint64_t table[4 * 256] = {
 	L64(0xC83223F1720AEF96) /* 1022 */,
 	L64(0xC3A0396F7363A51F) /* 1023 */,
 };
+
+#define t1 (table)
+#define t2 (table + 256)
+#define t3 (table + 256 * 2)
+#define t4 (table + 256 * 3)
+
+#endif // TIGER_TABLES_H
