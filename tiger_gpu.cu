@@ -204,6 +204,22 @@ void checkCudaError(cudaError_t err, const char *msg)
     }
 }
 
+// Add these kernel functions:
+__global__ void tiger_init_kernel(GPU_TIGER_CTX *context)
+{
+    TIGERInit_gpu(context);
+}
+
+__global__ void tiger_update_kernel(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
+{
+    TIGERUpdate_gpu(context, input, len);
+}
+
+__global__ void tiger_final_kernel(GPU_TIGER_CTX *context, unsigned char *digest)
+{
+    TIGER192Final_gpu(digest, context);
+}
+
 void host_TIGERInit_gpu(GPU_TIGER_CTX *context)
 {
     GPU_TIGER_CTX *d_context;
@@ -260,20 +276,4 @@ void host_TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
 
     cudaFree(d_context);
     cudaFree(d_digest);
-}
-
-// Add these kernel functions:
-__global__ void tiger_init_kernel(GPU_TIGER_CTX *context)
-{
-    TIGERInit_gpu(context);
-}
-
-__global__ void tiger_update_kernel(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
-{
-    TIGERUpdate_gpu(context, input, len);
-}
-
-__global__ void tiger_final_kernel(GPU_TIGER_CTX *context, unsigned char *digest)
-{
-    TIGER192Final_gpu(digest, context);
 }
