@@ -1052,6 +1052,8 @@ static const uint64_t table[4 * 256] = {
 	L64(0xC3A0396F7363A51F) /* 1023 */,
 };
 
+#define table tiger_table
+
 #define t1 (table)
 #define t2 (table + 256)
 #define t3 (table + 256 * 2)
