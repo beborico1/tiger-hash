@@ -15,6 +15,14 @@ __constant__ uint64_t d_table[4 * 256];
 __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
+// Function declarations for CPU Tiger hash functions that are defined in tiger.c
+extern "C"
+{
+    void TIGERInit(TIGER_CTX *context);
+    void TIGERUpdate(TIGER_CTX *context, const unsigned char *input, size_t length);
+    void TIGER192Final(unsigned char digest[24], TIGER_CTX *context);
+}
+
 // GPU context structure
 typedef struct
 {
