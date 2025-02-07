@@ -18,6 +18,16 @@ __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context);
 __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len);
 __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
 
+// Error checking helper function
+void checkCudaError(cudaError_t err, const char *msg)
+{
+    if (err != cudaSuccess)
+    {
+        fprintf(stderr, "CUDA Error: %s: %s\n", msg, cudaGetErrorString(err));
+        exit(1);
+    }
+}
+
 void print_hash(unsigned char *hash)
 {
     for (int i = 0; i < 24; i++)
@@ -149,16 +159,6 @@ void host_TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
 
     err = cudaFree(d_digest);
     checkCudaError(err, "Failed to free device digest memory");
-}
-
-// Error checking helper function
-void checkCudaError(cudaError_t err, const char *msg)
-{
-    if (err != cudaSuccess)
-    {
-        fprintf(stderr, "CUDA Error: %s: %s\n", msg, cudaGetErrorString(err));
-        exit(1);
-    }
 }
 
 // Test function to compare CPU and GPU implementations
