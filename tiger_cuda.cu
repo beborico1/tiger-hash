@@ -307,11 +307,11 @@ void checkCudaError(cudaError_t err, const char *msg)
 }
 
 // Function to initialize tables in GPU memory
-extern "C" void initialize_gpu_tables(const uint64_t *host_table, const char *charset)
+extern "C" void initialize_gpu_tables(const char *charset)
 {
     cudaError_t err;
 
-    err = cudaMemcpyToSymbol(d_table, host_table, sizeof(uint64_t) * 4 * 256);
+    err = cudaMemcpyToSymbol(d_table, tiger_table, sizeof(uint64_t) * 4 * 256);
     checkCudaError(err, "Failed to copy table to GPU");
 
     err = cudaMemcpyToSymbol(d_charset, charset, CHARSET_SIZE);

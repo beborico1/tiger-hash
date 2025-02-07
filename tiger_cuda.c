@@ -13,6 +13,11 @@
 // Tiger S-box tables in constant memory
 __constant__ uint64_t d_table[4 * 256];
 
+extern "C"
+{
+    extern const uint64_t tiger_table[4 * 256];
+}
+
 // GPU Context structure
 typedef struct
 {
