@@ -3,7 +3,7 @@
 #include "tiger_tables.h"
 #include <stdio.h>
 #include <string.h>
-#include "tiger_commmon.h"
+#include "tiger_common.h"
 
 // Tiger S-box tables in constant memory
 __constant__ uint64_t d_table[4 * 256];
