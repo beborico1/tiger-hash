@@ -13,6 +13,20 @@
 __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
+// Helper function to generate test strings
+__device__ void generate_string(char *buffer, size_t length, uint64_t index)
+{
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const int charset_size = 62;
+
+    for (size_t i = 0; i < length; i++)
+    {
+        buffer[i] = charset[index % charset_size];
+        index /= charset_size;
+    }
+    buffer[length] = '\0';
+}
+
 // Host-side charset initialization
 void initialize_charset()
 {
@@ -208,20 +222,6 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
 
         current_index += stride;
     }
-}
-
-// Helper function to generate test strings
-__device__ void generate_string(char *buffer, size_t length, uint64_t index)
-{
-    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const int charset_size = 62;
-
-    for (size_t i = 0; i < length; i++)
-    {
-        buffer[i] = charset[index % charset_size];
-        index /= charset_size;
-    }
-    buffer[length] = '\0';
 }
 
 int main()
