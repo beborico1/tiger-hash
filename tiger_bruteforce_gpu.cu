@@ -62,7 +62,7 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
         TIGER192Final_gpu(hash, &context);
 
         // Increment attempts counter using our custom atomic add
-        atomicAdd64(attempts, 1ULL);
+        atomicAdd64((unsigned long long *)attempts, 1ULL);
 
         // Compare hash with target
         bool match = true;
