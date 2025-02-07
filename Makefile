@@ -1,5 +1,6 @@
 # Compiler settings
 NVCC = nvcc
+CC = gcc
 CCFLAGS = -O3 -Wall -I.
 NVCCFLAGS = -O3 -I.
 
@@ -14,19 +15,21 @@ C_SOURCES = tiger.c tiger_impl.c tiger_tables.c
 CUDA_OBJECT = $(CUDA_SOURCE:.cu=.o)
 C_OBJECTS = $(C_SOURCES:.c=.o)
 
+# First compile C sources
+$(C_OBJECTS): %.o: %.c
+	$(CC) $(CCFLAGS) -c $< -o $@
+
+# Then compile CUDA sources
+$(CUDA_OBJECT): $(CUDA_SOURCE)
+	$(NVCC) $(NVCCFLAGS) $(CUDA_ARCH) -c $< -o $@
+
 # Target executable
 TARGET = tiger_bruteforce_gpu
 
 all: $(TARGET)
 
-$(TARGET): $(CUDA_OBJECT) $(C_OBJECTS)
+$(TARGET): $(C_OBJECTS) $(CUDA_OBJECT)
 	$(NVCC) $(NVCCFLAGS) $(CUDA_ARCH) -o $@ $^
-
-%.o: %.cu
-	$(NVCC) $(NVCCFLAGS) $(CUDA_ARCH) -c $< -o $@
-
-%.o: %.c
-	$(CC) $(CCFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(TARGET) *.o
