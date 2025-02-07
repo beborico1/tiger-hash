@@ -22,8 +22,8 @@ typedef struct
     unsigned int passes : 1;
 } TIGER_CTX;
 
-void TIGERInit(TIGER_CTX *context);
-void TIGERUpdate(TIGER_CTX *context, const unsigned char *input, size_t len);
-void TIGER192Final(unsigned char digest[24], TIGER_CTX *context);
+// void TIGERInit(TIGER_CTX *context);
+// void TIGERUpdate(TIGER_CTX *context, const unsigned char *input, size_t len);
+// void TIGER192Final(unsigned char digest[24], TIGER_CTX *context);
 
 #endif
