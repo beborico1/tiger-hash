@@ -1,3 +1,4 @@
+// tiger_hash_compare.cu
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>

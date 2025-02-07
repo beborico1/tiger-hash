@@ -1,3 +1,4 @@
+// tiger_bruteforce_gpu.cu
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
