@@ -388,6 +388,77 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
 
     return h_found;
 }
+
+// Host versions of the Tiger hash functions for initial hash generation
+void TIGERInit_host(TIGER_CTX *context)
+{
+    context->state[0] = 0x0123456789ABCDEFULL;
+    context->state[1] = 0xFEDCBA9876543210ULL;
+    context->state[2] = 0xF096A5B4C3B2E187ULL;
+    context->passed = 0;
+    context->length = 0;
+}
+
+void TIGERUpdate_host(TIGER_CTX *context, const unsigned char *input, size_t len)
+{
+    size_t i;
+
+    if (context->length + len < 64)
+    {
+        memcpy(context->buffer + context->length, input, len);
+        context->length += len;
+        return;
+    }
+
+    if (context->length)
+    {
+        i = 64 - context->length;
+        memcpy(context->buffer + context->length, input, i);
+        tiger_compress(context->buffer, context->state);
+        context->passed += 512;
+    }
+    else
+        i = 0;
+
+    for (; i + 63 < len; i += 64)
+    {
+        memcpy(context->buffer, input + i, 64);
+        tiger_compress(context->buffer, context->state);
+        context->passed += 512;
+    }
+
+    context->length = len - i;
+    if (context->length)
+    {
+        memcpy(context->buffer, input + i, context->length);
+    }
+}
+
+void TIGER192Final_host(unsigned char digest[24], TIGER_CTX *context)
+{
+    context->buffer[context->length++] = 0x01;
+    memset(context->buffer + context->length, 0, 64 - context->length);
+
+    if (context->length > 56)
+    {
+        tiger_compress(context->buffer, context->state);
+        memset(context->buffer, 0, 56);
+    }
+
+    uint64_t bits = context->passed + (context->length << 3);
+    for (int i = 0; i < 8; i++)
+    {
+        context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
+    }
+
+    tiger_compress(context->buffer, context->state);
+
+    for (int i = 0; i < 24; i++)
+    {
+        digest[i] = (context->state[i / 8] >> (8 * (i % 8))) & 0xFF;
+    }
+}
+
 int main()
 {
     srand(time(NULL));
@@ -406,7 +477,7 @@ int main()
         // Create a random target string and its hash
         char target_string[32];
         unsigned char target_hash[24];
-        GPU_TIGER_CTX context; // Changed from TIGER_CTX to GPU_TIGER_CTX
+        TIGER_CTX context; // Using CPU version for initial hash generation
 
         // Generate random target string
         for (size_t i = 0; i < length; i++)
@@ -415,10 +486,10 @@ int main()
         }
         target_string[length] = '\0';
 
-        // Generate its hash
-        TIGERInit_gpu(&context);
-        TIGERUpdate_gpu(&context, (const unsigned char *)target_string, length);
-        TIGER192Final_gpu(target_hash, &context);
+        // Generate its hash using host functions
+        TIGERInit_host(&context);
+        TIGERUpdate_host(&context, (const unsigned char *)target_string, length);
+        TIGER192Final_host(target_hash, &context);
 
         printf("\nTesting length %zu\n", length);
         printf("Target string: %s\n", target_string);
@@ -427,7 +498,7 @@ int main()
             printf("%02x", target_hash[i]);
         printf("\n");
 
-        // Try to find it
+        // Try to find it using GPU
         char result[32];
         uint64_t attempts = 0;
         bool found = bruteforce_gpu(target_hash, length, time_limit, result, &attempts);
