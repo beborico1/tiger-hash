@@ -54,7 +54,7 @@ __constant__ uint64_t d_table[4 * 256];
     x7 -= x6 ^ 0x0123456789ABCDEFULL;
 
 // GPU implementation of tiger_compress
-__device__ void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
+__device__ static void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
 {
     uint64_t a, b, c, aa, bb, cc;
     uint64_t x0, x1, x2, x3, x4, x5, x6, x7;
@@ -72,21 +72,16 @@ __device__ void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
     x6 = str[6];
     x7 = str[7];
 
-    // Save state
     GPU_SAVE_ABC
 
-    // Pass 1
     GPU_PASS(a, b, c, 5)
     GPU_KEY_SCHEDULE
 
-    // Pass 2
     GPU_PASS(c, a, b, 7)
     GPU_KEY_SCHEDULE
 
-    // Pass 3
     GPU_PASS(b, c, a, 9)
 
-    // Feedforward
     a ^= aa;
     b -= bb;
     c += cc;
@@ -96,6 +91,7 @@ __device__ void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
     state[2] = c;
 }
 
+// Define the actual device functions that were declared in tiger_gpu.h
 __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context)
 {
     context->state[0] = 0x0123456789ABCDEFULL;
@@ -188,7 +184,6 @@ __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *conte
     }
 }
 
-// Initialize S-box tables on GPU
 void initialize_gpu_tables()
 {
     static int tables_initialized = 0;
@@ -200,7 +195,6 @@ void initialize_gpu_tables()
     }
 }
 
-// Error checking helper
 void checkCudaError(cudaError_t err, const char *msg)
 {
     if (err != cudaSuccess)
