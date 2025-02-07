@@ -414,7 +414,7 @@ void TIGERUpdate_host(TIGER_CTX *context, const unsigned char *input, size_t len
     {
         i = 64 - context->length;
         memcpy(context->buffer + context->length, input, i);
-        tiger_compress(context->buffer, context->state);
+        tiger_compress_gpu(context->buffer, context->state);
         context->passed += 512;
     }
     else
@@ -423,7 +423,7 @@ void TIGERUpdate_host(TIGER_CTX *context, const unsigned char *input, size_t len
     for (; i + 63 < len; i += 64)
     {
         memcpy(context->buffer, input + i, 64);
-        tiger_compress(context->buffer, context->state);
+        tiger_compress_gpu(context->buffer, context->state);
         context->passed += 512;
     }
 
@@ -441,7 +441,7 @@ void TIGER192Final_host(unsigned char digest[24], TIGER_CTX *context)
 
     if (context->length > 56)
     {
-        tiger_compress(context->buffer, context->state);
+        tiger_compress_gpu(context->buffer, context->state);
         memset(context->buffer, 0, 56);
     }
 
@@ -451,7 +451,7 @@ void TIGER192Final_host(unsigned char digest[24], TIGER_CTX *context)
         context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
     }
 
-    tiger_compress(context->buffer, context->state);
+    tiger_compress_gpu(context->buffer, context->state);
 
     for (int i = 0; i < 24; i++)
     {
