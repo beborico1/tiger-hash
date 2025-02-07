@@ -46,16 +46,16 @@ extern const uint64_t table[4 * 256];
 #define t3 (table + 256 * 2)
 #define t4 (table + 256 * 3)
 
-void TIGERInit(TIGER_CTX *context)
-{
-    context->state[0] = L64(0x0123456789ABCDEF);
-    context->state[1] = L64(0xFEDCBA9876543210);
-    context->state[2] = L64(0xF096A5B4C3B2E187);
-    context->passed = 0;
-    context->length = 0;
-    context->passes = 0;
-    memset(context->buffer, 0, sizeof(context->buffer));
-}
+// void TIGERInit(TIGER_CTX *context)
+// {
+//     context->state[0] = L64(0x0123456789ABCDEF);
+//     context->state[1] = L64(0xFEDCBA9876543210);
+//     context->state[2] = L64(0xF096A5B4C3B2E187);
+//     context->passed = 0;
+//     context->length = 0;
+//     context->passes = 0;
+//     memset(context->buffer, 0, sizeof(context->buffer));
+// }
 
 static void tiger_compress(const uint64_t *str, uint64_t state[3], int passes)
 {
@@ -145,70 +145,70 @@ static void tiger_compress(const uint64_t *str, uint64_t state[3], int passes)
     state[2] = c;
 }
 
-void TIGERUpdate(TIGER_CTX *context, const unsigned char *input, size_t len)
-{
-    if (context->length + len < 64)
-    {
-        memcpy(&context->buffer[context->length], input, len);
-        context->length += len;
-    }
-    else
-    {
-        size_t i = 0, r = (context->length + len) % 64;
+// void TIGERUpdate(TIGER_CTX *context, const unsigned char *input, size_t len)
+// {
+//     if (context->length + len < 64)
+//     {
+//         memcpy(&context->buffer[context->length], input, len);
+//         context->length += len;
+//     }
+//     else
+//     {
+//         size_t i = 0, r = (context->length + len) % 64;
 
-        if (context->length)
-        {
-            i = 64 - context->length;
-            memcpy(&context->buffer[context->length], input, i);
-            tiger_compress((const uint64_t *)context->buffer, context->state, 3);
-            context->passed += 512;
-        }
+//         if (context->length)
+//         {
+//             i = 64 - context->length;
+//             memcpy(&context->buffer[context->length], input, i);
+//             tiger_compress((const uint64_t *)context->buffer, context->state, 3);
+//             context->passed += 512;
+//         }
 
-        for (; i + 64 <= len; i += 64)
-        {
-            memcpy(context->buffer, &input[i], 64);
-            tiger_compress((const uint64_t *)context->buffer, context->state, 3);
-            context->passed += 512;
-        }
+//         for (; i + 64 <= len; i += 64)
+//         {
+//             memcpy(context->buffer, &input[i], 64);
+//             tiger_compress((const uint64_t *)context->buffer, context->state, 3);
+//             context->passed += 512;
+//         }
 
-        memset(&context->buffer[r], 0, 64 - r);
-        memcpy(context->buffer, &input[i], r);
-        context->length = r;
-    }
-}
+//         memset(&context->buffer[r], 0, 64 - r);
+//         memcpy(context->buffer, &input[i], r);
+//         context->length = r;
+//     }
+// }
 
-void TIGER192Final(unsigned char digest[24], TIGER_CTX *context)
-{
-    // Add padding
-    context->buffer[context->length++] = 0x01;
+// void TIGER192Final(unsigned char digest[24], TIGER_CTX *context)
+// {
+//     // Add padding
+//     context->buffer[context->length++] = 0x01;
 
-    // If length is > 56 bytes, process this block and create a new one
-    if (context->length > 56)
-    {
-        memset(&context->buffer[context->length], 0, 64 - context->length);
-        tiger_compress((const uint64_t *)context->buffer, context->state, 3);
-        context->length = 0;
-    }
+//     // If length is > 56 bytes, process this block and create a new one
+//     if (context->length > 56)
+//     {
+//         memset(&context->buffer[context->length], 0, 64 - context->length);
+//         tiger_compress((const uint64_t *)context->buffer, context->state, 3);
+//         context->length = 0;
+//     }
 
-    // Pad with zeros up to 56 bytes
-    memset(&context->buffer[context->length], 0, 56 - context->length);
+//     // Pad with zeros up to 56 bytes
+//     memset(&context->buffer[context->length], 0, 56 - context->length);
 
-    // Append length in bits
-    uint64_t bits = context->passed + (context->length << 3);
-    for (int i = 0; i < 8; i++)
-    {
-        context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
-    }
+//     // Append length in bits
+//     uint64_t bits = context->passed + (context->length << 3);
+//     for (int i = 0; i < 8; i++)
+//     {
+//         context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
+//     }
 
-    // Process final block
-    tiger_compress((const uint64_t *)context->buffer, context->state, 3);
+//     // Process final block
+//     tiger_compress((const uint64_t *)context->buffer, context->state, 3);
 
-    // Output hash
-    for (int i = 0; i < 24; i++)
-    {
-        digest[i] = (context->state[i / 8] >> (8 * (i % 8))) & 0xFF;
-    }
+//     // Output hash
+//     for (int i = 0; i < 24; i++)
+//     {
+//         digest[i] = (context->state[i / 8] >> (8 * (i % 8))) & 0xFF;
+//     }
 
-    // Clear sensitive data
-    memset(context, 0, sizeof(*context));
-}
+//     // Clear sensitive data
+//     memset(context, 0, sizeof(*context));
+// }
