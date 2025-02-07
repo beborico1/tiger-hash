@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "tiger_tables.h"
 
 // Constants
 #define BLOCK_SIZE 256
