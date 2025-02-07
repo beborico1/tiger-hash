@@ -2,11 +2,16 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 // Constants
 #define BLOCK_SIZE 256
 #define NUM_BLOCKS 1024
 #define CHARSET_SIZE 62
+
+// Forward declarations
+__device__ void tiger_compress_gpu(uint64_t *str, uint64_t *state);
 
 // Device constant memory for lookup tables and charset
 __constant__ uint64_t d_table[4 * 256];
@@ -23,17 +28,19 @@ typedef struct
 } GPU_TIGER_CTX;
 
 // Round and key schedule macros
-#define ROUND(a, b, c, x, mul)                                                     \
-    c ^= x;                                                                        \
-    a -= d_table[(unsigned char)(c)] ^                                             \
-         d_table[256 + (unsigned char)(((uint32_t)(c)) >> (2 * 8))] ^              \
-         d_table[512 + (unsigned char)((c) >> (4 * 8))] ^                          \
-         d_table[768 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (2 * 8))];  \
-    b += d_table[768 + (unsigned char)(((uint32_t)(c)) >> (1 * 8))] ^              \
-         d_table[512 + (unsigned char)(((uint32_t)(c)) >> (3 * 8))] ^              \
-         d_table[256 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (1 * 8))] ^ \
-         d_table[(unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (3 * 8))];        \
-    b *= mul;
+#define ROUND(a, b, c, x, mul)                                                         \
+    {                                                                                  \
+        c ^= x;                                                                        \
+        a -= d_table[(unsigned char)(c)] ^                                             \
+             d_table[256 + (unsigned char)(((uint32_t)(c)) >> (2 * 8))] ^              \
+             d_table[512 + (unsigned char)((c) >> (4 * 8))] ^                          \
+             d_table[768 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (2 * 8))];  \
+        b += d_table[768 + (unsigned char)(((uint32_t)(c)) >> (1 * 8))] ^              \
+             d_table[512 + (unsigned char)(((uint32_t)(c)) >> (3 * 8))] ^              \
+             d_table[256 + (unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (1 * 8))] ^ \
+             d_table[(unsigned char)(((uint32_t)((c) >> (4 * 8))) >> (3 * 8))];        \
+        b *= mul;                                                                      \
+    }
 
 #define KEY_SCHEDULE                      \
     {                                     \
@@ -54,13 +61,6 @@ typedef struct
         x6 += x5;                         \
         x7 -= x6 ^ 0x0123456789ABCDEFULL; \
     }
-
-// Forward declarations of device functions
-__device__ void tiger_compress_gpu(uint64_t *str, uint64_t *state);
-__device__ void TIGERInit_gpu(GPU_TIGER_CTX *context);
-__device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len);
-__device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
-__device__ unsigned long long atomicAdd64(unsigned long long *address, unsigned long long val);
 
 // Implementation of tiger_compress_gpu
 __device__ void tiger_compress_gpu(uint64_t *str, uint64_t *state)
@@ -307,7 +307,7 @@ void checkCudaError(cudaError_t err, const char *msg)
 }
 
 // Function to initialize tables in GPU memory
-void initialize_gpu_tables(const uint64_t *host_table, const char *charset)
+extern "C" void initialize_gpu_tables(const uint64_t *host_table, const char *charset)
 {
     cudaError_t err;
 
