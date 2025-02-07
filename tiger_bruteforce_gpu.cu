@@ -14,25 +14,28 @@ __constant__ uint64_t d_table[4 * 256];
 __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
-// GPU context structure - aligned version for both CPU and GPU
-typedef struct __attribute__((aligned(8)))
+// Common buffer type for both CPU and GPU
+typedef union
 {
-    uint64_t state[3];
-    uint64_t passed;
-    unsigned char buffer[64]; // Changed from union to direct array for simplicity
-    uint32_t length;
-} GPU_TIGER_CTX; // Renamed to GPU_TIGER_CTX for consistency
+    unsigned char bytes[64];
+    uint64_t words[8];
+} tiger_buffer_t;
 
-// CPU context structure stays the same
+// GPU context structure
 typedef struct __attribute__((aligned(8)))
 {
     uint64_t state[3];
     uint64_t passed;
-    union
-    {
-        unsigned char bytes[64];
-        uint64_t words[8];
-    } buffer;
+    tiger_buffer_t buffer;
+    uint32_t length;
+} GPU_TIGER_CTX;
+
+// CPU context structure
+typedef struct __attribute__((aligned(8)))
+{
+    uint64_t state[3];
+    uint64_t passed;
+    tiger_buffer_t buffer;
     uint32_t length;
 } TIGER_CTX;
 
@@ -43,7 +46,7 @@ void TIGERInit_host(TIGER_CTX *context)
     context->state[2] = 0xF096A5B4C3B2E187ULL;
     context->passed = 0;
     context->length = 0;
-    memset(context->buffer.bytes, 0, 64); // Initialize using the bytes member
+    memset(context->buffer.bytes, 0, 64);
 }
 
 // Round macros for GPU implementation
@@ -156,7 +159,7 @@ __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context)
 
     for (int i = 0; i < 64; i++)
     {
-        context->buffer[i] = 0;
+        context->buffer.bytes[i] = 0;
     }
 }
 
@@ -166,7 +169,7 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
     {
         for (size_t i = 0; i < len; i++)
         {
-            context->buffer[context->length + i] = input[i];
+            context->buffer.bytes[context->length + i] = input[i];
         }
         context->length += len;
     }
@@ -179,10 +182,10 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
             size_t fill = 64 - context->length;
             for (size_t j = 0; j < fill; j++)
             {
-                context->buffer[context->length + j] = input[j];
+                context->buffer.bytes[context->length + j] = input[j];
             }
 
-            tiger_compress_gpu((uint64_t *)context->buffer, context->state);
+            tiger_compress_gpu(context->buffer.words, context->state);
             context->passed += 512;
             i = fill;
         }
@@ -191,9 +194,9 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
         {
             for (int j = 0; j < 64; j++)
             {
-                context->buffer[j] = input[i + j];
+                context->buffer.bytes[j] = input[i + j];
             }
-            tiger_compress_gpu((uint64_t *)context->buffer, context->state);
+            tiger_compress_gpu(context->buffer.words, context->state);
             context->passed += 512;
             i += 64;
         }
@@ -201,36 +204,36 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
         context->length = len - i;
         for (size_t j = 0; j < context->length; j++)
         {
-            context->buffer[j] = input[i + j];
+            context->buffer.bytes[j] = input[i + j];
         }
     }
 }
 
 __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
 {
-    context->buffer[context->length++] = 0x01;
+    context->buffer.bytes[context->length++] = 0x01;
 
     for (size_t i = context->length; i < 64; i++)
     {
-        context->buffer[i] = 0;
+        context->buffer.bytes[i] = 0;
     }
 
     if (context->length > 56)
     {
-        tiger_compress_gpu((uint64_t *)context->buffer, context->state);
+        tiger_compress_gpu(context->buffer.words, context->state);
         for (int i = 0; i < 64; i++)
         {
-            context->buffer[i] = 0;
+            context->buffer.bytes[i] = 0;
         }
     }
 
     uint64_t bits = context->passed + (context->length << 3);
     for (int i = 0; i < 8; i++)
     {
-        context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
+        context->buffer.bytes[56 + i] = (bits >> (i * 8)) & 0xFF;
     }
 
-    tiger_compress_gpu((uint64_t *)context->buffer, context->state);
+    tiger_compress_gpu(context->buffer.words, context->state);
 
     for (int i = 0; i < 24; i++)
     {
@@ -238,7 +241,6 @@ __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *conte
     }
 }
 
-// Helper functions
 __device__ void generate_string(char *buffer, size_t length, uint64_t index)
 {
     for (size_t i = 0; i < length; i++)
@@ -260,7 +262,6 @@ __device__ unsigned long long atomicAdd64(unsigned long long *address, unsigned 
     return old;
 }
 
-// Bruteforce kernel
 __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *found,
                                   char *result_string, unsigned long long *attempts)
 {
@@ -317,7 +318,6 @@ void checkCudaError(cudaError_t err, const char *msg)
 
 void initialize_gpu_tables(void)
 {
-    // Initialize charset
     char charset[CHARSET_SIZE];
     int idx = 0;
     for (char c = 'a'; c <= 'z'; c++)
@@ -345,7 +345,6 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
     unsigned long long h_attempts = 0;
     cudaError_t err;
 
-    // Initialize CUDA memory
     err = cudaMemcpyToSymbol(d_target, target_hash, 24);
     checkCudaError(err, "Failed to copy target hash to constant memory");
 
@@ -380,7 +379,6 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
 
         start_index += NUM_BLOCKS * BLOCK_SIZE;
 
-        // Periodically update attempts count
         if (start_index % (NUM_BLOCKS * BLOCK_SIZE * 100) == 0)
         {
             err = cudaMemcpy(&h_attempts, d_attempts, sizeof(unsigned long long),
