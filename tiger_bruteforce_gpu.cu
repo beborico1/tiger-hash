@@ -417,9 +417,9 @@ int main()
         target_string[length] = '\0';
 
         // Generate its hash
-        TIGERInit(&context);
-        TIGERUpdate(&context, (const unsigned char *)target_string, length);
-        TIGER192Final(target_hash, &context);
+        TIGERInit_gpu(&context);
+        TIGERUpdate_gpu(&context, (const unsigned char *)target_string, length);
+        TIGER192Final_gpu(target_hash, &context);
 
         printf("\nTesting length %zu\n", length);
         printf("Target string: %s\n", target_string);
