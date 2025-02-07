@@ -1,58 +1,13 @@
+// tiger_gpu.cu - Combined GPU implementation
+#include "tiger_gpu.h"
+#include "tiger_tables.h"
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
-#include <cuda_runtime.h>
-#include "tiger.h"
-#include "tiger_tables.h"
-
-// Constants for Tiger hash
-#define BLOCK_SIZE 256
-#define NUM_BLOCKS 1024
-
-// GPU Tiger context structure
-typedef struct
-{
-    uint64_t state[3];
-    uint64_t passed;
-    unsigned char buffer[64];
-    uint32_t length;
-} GPU_TIGER_CTX;
 
 // Tiger S-box tables in constant memory
 __constant__ uint64_t d_table[4 * 256];
 
-// Function to initialize S-box tables on GPU
-void initialize_gpu_tables()
-{
-    static int tables_initialized = 0;
-    if (!tables_initialized)
-    {
-        cudaError_t err = cudaMemcpyToSymbol(d_table, table, sizeof(uint64_t) * 4 * 256);
-        if (err != cudaSuccess)
-        {
-            fprintf(stderr, "Failed to copy S-box tables to GPU: %s\n", cudaGetErrorString(err));
-            exit(1);
-        }
-        tables_initialized = 1;
-    }
-}
-
-// Endianness handling for 64-bit values
-__device__ uint64_t swap64(uint64_t x)
-{
-    x = ((x << 8) & 0xFF00FF00FF00FF00ULL) | ((x >> 8) & 0x00FF00FF00FF00FFULL);
-    x = ((x << 16) & 0xFFFF0000FFFF0000ULL) | ((x >> 16) & 0x0000FFFF0000FFFFULL);
-    return (x << 32) | (x >> 32);
-}
-
-// Endianness handling macros
-#ifdef WORDS_BIGENDIAN
-#define GPU_LOAD64(x) swap64(x)
-#else
-#define GPU_LOAD64(x) (x)
-#endif
-
-// Tiger hash implementation macros
+// Macros for GPU implementation
 #define GPU_SAVE_ABC \
     aa = a;          \
     bb = b;          \
@@ -98,44 +53,26 @@ __device__ uint64_t swap64(uint64_t x)
     x6 += x5;                         \
     x7 -= x6 ^ 0x0123456789ABCDEFULL;
 
-#define GPU_FEEDFORWARD \
-    a ^= aa;            \
-    b -= bb;            \
-    c += cc;
-
-// Debug functionality
-#ifdef DEBUG_TIGER
-__device__ void debug_print_state(const char *msg, uint64_t *state)
-{
-    printf("%s: %016llx %016llx %016llx\n", msg, state[0], state[1], state[2]);
-}
-#endif
-
 // GPU implementation of tiger_compress
-__device__ void tiger_compress_gpu(uint64_t *str, uint64_t *state)
+__device__ void tiger_compress_gpu(const uint64_t *str, uint64_t *state)
 {
-    uint64_t a, b, c;
-    uint64_t aa, bb, cc;
+    uint64_t a, b, c, aa, bb, cc;
     uint64_t x0, x1, x2, x3, x4, x5, x6, x7;
 
     a = state[0];
     b = state[1];
     c = state[2];
 
-    // Load data with proper endianness handling
-    x0 = GPU_LOAD64(str[0]);
-    x1 = GPU_LOAD64(str[1]);
-    x2 = GPU_LOAD64(str[2]);
-    x3 = GPU_LOAD64(str[3]);
-    x4 = GPU_LOAD64(str[4]);
-    x5 = GPU_LOAD64(str[5]);
-    x6 = GPU_LOAD64(str[6]);
-    x7 = GPU_LOAD64(str[7]);
+    x0 = str[0];
+    x1 = str[1];
+    x2 = str[2];
+    x3 = str[3];
+    x4 = str[4];
+    x5 = str[5];
+    x6 = str[6];
+    x7 = str[7];
 
-#ifdef DEBUG_TIGER
-    debug_print_state("Initial state", state);
-#endif
-
+    // Save state
     GPU_SAVE_ABC
 
     // Pass 1
@@ -149,23 +86,21 @@ __device__ void tiger_compress_gpu(uint64_t *str, uint64_t *state)
     // Pass 3
     GPU_PASS(b, c, a, 9)
 
-    GPU_FEEDFORWARD
+    // Feedforward
+    a ^= aa;
+    b -= bb;
+    c += cc;
 
     state[0] = a;
     state[1] = b;
     state[2] = c;
-
-#ifdef DEBUG_TIGER
-    debug_print_state("Final state", state);
-#endif
 }
 
-// GPU initialization function
 __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context)
 {
-    context->state[0] = GPU_LOAD64(0x0123456789ABCDEFULL);
-    context->state[1] = GPU_LOAD64(0xFEDCBA9876543210ULL);
-    context->state[2] = GPU_LOAD64(0xF096A5B4C3B2E187ULL);
+    context->state[0] = 0x0123456789ABCDEFULL;
+    context->state[1] = 0xFEDCBA9876543210ULL;
+    context->state[2] = 0xF096A5B4C3B2E187ULL;
     context->passed = 0;
     context->length = 0;
 
@@ -175,7 +110,6 @@ __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context)
     }
 }
 
-// GPU update function
 __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
 {
     if (context->length + len < 64)
@@ -198,20 +132,19 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
                 context->buffer[context->length + j] = input[j];
             }
 
-            tiger_compress_gpu((uint64_t *)context->buffer, context->state);
+            tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
             context->passed += 512;
             i = fill;
         }
 
-        while (i + 64 <= len)
+        for (; i + 64 <= len; i += 64)
         {
             for (int j = 0; j < 64; j++)
             {
                 context->buffer[j] = input[i + j];
             }
-            tiger_compress_gpu((uint64_t *)context->buffer, context->state);
+            tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
             context->passed += 512;
-            i += 64;
         }
 
         context->length = len - i;
@@ -222,7 +155,6 @@ __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *inp
     }
 }
 
-// GPU final function
 __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
 {
     context->buffer[context->length] = 0x01;
@@ -235,8 +167,7 @@ __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *conte
 
     if (context->length > 56)
     {
-        tiger_compress_gpu((uint64_t *)context->buffer, context->state);
-
+        tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
         for (int i = 0; i < 64; i++)
         {
             context->buffer[i] = 0;
@@ -249,7 +180,7 @@ __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *conte
         context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
     }
 
-    tiger_compress_gpu((uint64_t *)context->buffer, context->state);
+    tiger_compress_gpu((const uint64_t *)context->buffer, context->state);
 
     for (int i = 0; i < 24; i++)
     {
@@ -267,168 +198,14 @@ void checkCudaError(cudaError_t err, const char *msg)
     }
 }
 
-// Kernel definitions
-__global__ void tiger_init_kernel(GPU_TIGER_CTX *context)
+// Initialize GPU tables
+void initialize_gpu_tables()
 {
-    TIGERInit_gpu(context);
-}
-
-__global__ void tiger_update_kernel(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
-{
-    TIGERUpdate_gpu(context, input, len);
-}
-
-__global__ void tiger_final_kernel(GPU_TIGER_CTX *context, unsigned char *digest)
-{
-    TIGER192Final_gpu(digest, context);
-}
-
-// Host wrapper functions
-void host_TIGERInit_gpu(GPU_TIGER_CTX *context)
-{
-    // Initialize S-box tables if not already done
-    initialize_gpu_tables();
-
-    GPU_TIGER_CTX *d_context;
-    cudaError_t err;
-
-    err = cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
-    checkCudaError(err, "Failed to allocate device memory for context");
-
-    tiger_init_kernel<<<1, 1>>>(d_context);
-    err = cudaGetLastError();
-    checkCudaError(err, "Failed to launch init kernel");
-
-    err = cudaDeviceSynchronize();
-    checkCudaError(err, "Failed to synchronize after init kernel");
-
-    err = cudaMemcpy(context, d_context, sizeof(GPU_TIGER_CTX), cudaMemcpyDeviceToHost);
-    checkCudaError(err, "Failed to copy context back to host");
-
-    cudaFree(d_context);
-}
-
-void host_TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len)
-{
-    GPU_TIGER_CTX *d_context;
-    unsigned char *d_input;
-    cudaError_t err;
-
-    err = cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
-    checkCudaError(err, "Failed to allocate device memory for context");
-
-    err = cudaMalloc(&d_input, len);
-    checkCudaError(err, "Failed to allocate device memory for input");
-
-    err = cudaMemcpy(d_context, context, sizeof(GPU_TIGER_CTX), cudaMemcpyHostToDevice);
-    checkCudaError(err, "Failed to copy context to device");
-
-    err = cudaMemcpy(d_input, input, len, cudaMemcpyHostToDevice);
-    checkCudaError(err, "Failed to copy input to device");
-
-    tiger_update_kernel<<<1, 1>>>(d_context, d_input, len);
-    err = cudaGetLastError();
-    checkCudaError(err, "Failed to launch update kernel");
-
-    err = cudaDeviceSynchronize();
-    checkCudaError(err, "Failed to synchronize after update kernel");
-
-    err = cudaMemcpy(context, d_context, sizeof(GPU_TIGER_CTX), cudaMemcpyDeviceToHost);
-    checkCudaError(err, "Failed to copy context back to host");
-
-    cudaFree(d_context);
-    cudaFree(d_input);
-}
-
-void host_TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context)
-{
-    GPU_TIGER_CTX *d_context;
-    unsigned char *d_digest;
-    cudaError_t err;
-
-    err = cudaMalloc(&d_context, sizeof(GPU_TIGER_CTX));
-    checkCudaError(err, "Failed to allocate device memory for context");
-
-    err = cudaMalloc(&d_digest, 24);
-    checkCudaError(err, "Failed to allocate device memory for digest");
-
-    err = cudaMemcpy(d_context, context, sizeof(GPU_TIGER_CTX), cudaMemcpyHostToDevice);
-    checkCudaError(err, "Failed to copy context to device");
-
-    tiger_final_kernel<<<1, 1>>>(d_context, d_digest);
-    err = cudaGetLastError();
-    checkCudaError(err, "Failed to launch final kernel");
-
-    err = cudaDeviceSynchronize();
-    checkCudaError(err, "Failed to synchronize after final kernel");
-
-    err = cudaMemcpy(digest, d_digest, 24, cudaMemcpyDeviceToHost);
-    checkCudaError(err, "Failed to copy digest back to host");
-
-    cudaFree(d_context);
-    cudaFree(d_digest);
-}
-
-// Utility function to print hash
-void print_hash(unsigned char *hash)
-{
-    for (int i = 0; i < 24; i++)
+    static int tables_initialized = 0;
+    if (!tables_initialized)
     {
-        printf("%02x", hash[i]);
+        cudaError_t err = cudaMemcpyToSymbol(d_table, table, sizeof(uint64_t) * 4 * 256);
+        checkCudaError(err, "Failed to copy S-box tables to GPU");
+        tables_initialized = 1;
     }
-    printf("\n");
-}
-
-// Test function to compare CPU and GPU implementations
-void test_implementations(const char *input)
-{
-    // CPU implementation
-    TIGER_CTX cpu_ctx;
-    unsigned char cpu_digest[24];
-
-    TIGERInit(&cpu_ctx);
-    TIGERUpdate(&cpu_ctx, (const unsigned char *)input, strlen(input));
-    TIGER192Final(cpu_digest, &cpu_ctx);
-
-    // GPU implementation
-    GPU_TIGER_CTX gpu_ctx;
-    unsigned char gpu_digest[24];
-
-    host_TIGERInit_gpu(&gpu_ctx);
-    host_TIGERUpdate_gpu(&gpu_ctx, (const unsigned char *)input, strlen(input));
-    host_TIGER192Final_gpu(gpu_digest, &gpu_ctx);
-
-    // Compare results
-    printf("Input string: %s\n", input);
-    printf("CPU hash: ");
-    print_hash(cpu_digest);
-    printf("GPU hash: ");
-    print_hash(gpu_digest);
-
-    int match = memcmp(cpu_digest, gpu_digest, 24) == 0;
-    printf("Hash match: %s\n\n", match ? "YES" : "NO");
-}
-
-int main()
-{
-    // Test cases
-    const char *test_cases[] = {
-        "",                                                         // Empty string
-        "a",                                                        // Single character
-        "abc",                                                      // Classic test case
-        "message digest",                                           // Longer string
-        "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", // Long input
-        "The quick brown fox jumps over the lazy dog"               // Sentence
-    };
-
-    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
-
-    printf("Running Tiger hash implementation comparison tests...\n\n");
-
-    for (int i = 0; i < num_tests; i++)
-    {
-        test_implementations(test_cases[i]);
-    }
-
-    return 0;
 }
