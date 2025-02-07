@@ -312,7 +312,7 @@ extern "C" void initialize_gpu_tables(const char *charset)
 {
     cudaError_t err;
 
-    err = cudaMemcpyToSymbol(d_table, tiger_table, sizeof(uint64_t) * 4 * 256);
+    err = cudaMemcpyToSymbol(d_table, table, sizeof(uint64_t) * 4 * 256);
     checkCudaError(err, "Failed to copy table to GPU");
 
     err = cudaMemcpyToSymbol(d_charset, charset, CHARSET_SIZE);
