@@ -41,7 +41,7 @@ __device__ unsigned long long atomicAdd64(unsigned long long *address, unsigned 
 
 // Bruteforce kernel
 __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *found,
-                                  char *result_string, unsigned long long *attempts)
+                                  char *result_string, unsigned long long *attempts) // Changed type here
 {
     uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
     uint64_t stride = gridDim.x * blockDim.x;
@@ -62,7 +62,7 @@ __global__ void bruteforce_kernel(size_t length, uint64_t start_index, bool *fou
         TIGER192Final_gpu(hash, &context);
 
         // Increment attempts counter using our custom atomic add
-        atomicAdd64((unsigned long long *)attempts, 1ULL);
+        atomicAdd64(attempts, 1ULL); // No cast needed now
 
         // Compare hash with target
         bool match = true;
@@ -95,9 +95,9 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
 {
     bool *d_found;
     char *d_result;
-    uint64_t *d_attempts;
+    unsigned long long *d_attempts;
     bool h_found = false;
-    uint64_t h_attempts = 0;
+    unsigned long long h_attempts = 0;
     cudaError_t err;
 
     // Initialize CUDA memory
@@ -110,13 +110,13 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
     err = cudaMalloc(&d_result, 32); // Max string length + null terminator
     checkCudaError(err, "Failed to allocate device memory for result");
 
-    err = cudaMalloc(&d_attempts, sizeof(uint64_t));
+    err = cudaMalloc(&d_attempts, sizeof(unsigned long long));
     checkCudaError(err, "Failed to allocate device memory for attempts counter");
 
     err = cudaMemset(d_found, 0, sizeof(bool));
     checkCudaError(err, "Failed to initialize found flag");
 
-    err = cudaMemset(d_attempts, 0, sizeof(uint64_t));
+    err = cudaMemset(d_attempts, 0, sizeof(unsigned long long));
     checkCudaError(err, "Failed to initialize attempts counter");
 
     uint64_t start_index = 0;
@@ -138,16 +138,16 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
         // Periodically update attempts count
         if (start_index % (NUM_BLOCKS * THREADS_PER_BLOCK * 100) == 0)
         {
-            err = cudaMemcpy(&h_attempts, d_attempts, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            err = cudaMemcpy(&h_attempts, d_attempts, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
             checkCudaError(err, "Failed to copy attempts counter from device");
-            *total_attempts = h_attempts;
+            *total_attempts = (uint64_t)h_attempts;
         }
     }
 
     // Get final attempt count
-    err = cudaMemcpy(&h_attempts, d_attempts, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(&h_attempts, d_attempts, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
     checkCudaError(err, "Failed to copy final attempts counter from device");
-    *total_attempts = h_attempts;
+    *total_attempts = (uint64_t)h_attempts;
 
     // If found, copy the result string
     if (h_found)
