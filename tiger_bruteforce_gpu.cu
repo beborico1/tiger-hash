@@ -16,13 +16,27 @@ __constant__ char d_charset[CHARSET_SIZE];
 __constant__ unsigned char d_target[24];
 
 // GPU context structure
-typedef struct
-{
+typedef struct __attribute__((aligned(8)))
+{ // Ensure 8-byte alignment
     uint64_t state[3];
     uint64_t passed;
-    unsigned char buffer[64];
+    union
+    { // Use a union to ensure proper alignment
+        unsigned char bytes[64];
+        uint64_t words[8];
+    } buffer;
     uint32_t length;
-} GPU_TIGER_CTX;
+} TIGER_CTX;
+
+void TIGERInit_host(TIGER_CTX *context)
+{
+    context->state[0] = 0x0123456789ABCDEFULL;
+    context->state[1] = 0xFEDCBA9876543210ULL;
+    context->state[2] = 0xF096A5B4C3B2E187ULL;
+    context->passed = 0;
+    context->length = 0;
+    memset(context->buffer.bytes, 0, 64); // Initialize using the bytes member
+}
 
 // Round macros for GPU implementation
 #define ROUND(a, b, c, x, mul)                                                         \
@@ -389,16 +403,6 @@ bool bruteforce_gpu(const unsigned char *target_hash, size_t length, double time
     return h_found;
 }
 
-// Host versions of the Tiger hash functions for initial hash generation
-void TIGERInit_host(TIGER_CTX *context)
-{
-    context->state[0] = 0x0123456789ABCDEFULL;
-    context->state[1] = 0xFEDCBA9876543210ULL;
-    context->state[2] = 0xF096A5B4C3B2E187ULL;
-    context->passed = 0;
-    context->length = 0;
-}
-
 void TIGERUpdate_host(TIGER_CTX *context, const unsigned char *input, size_t len)
 {
     size_t i;
@@ -414,7 +418,7 @@ void TIGERUpdate_host(TIGER_CTX *context, const unsigned char *input, size_t len
     {
         i = 64 - context->length;
         memcpy(context->buffer + context->length, input, i);
-        tiger_compress_gpu(context->buffer, context->state);
+        tiger_compress_gpu((uint64_t *)context->buffer, context->state); // Explicit cast
         context->passed += 512;
     }
     else
@@ -423,7 +427,7 @@ void TIGERUpdate_host(TIGER_CTX *context, const unsigned char *input, size_t len
     for (; i + 63 < len; i += 64)
     {
         memcpy(context->buffer, input + i, 64);
-        tiger_compress_gpu(context->buffer, context->state);
+        tiger_compress_gpu((uint64_t *)context->buffer, context->state); // Explicit cast
         context->passed += 512;
     }
 
@@ -441,7 +445,7 @@ void TIGER192Final_host(unsigned char digest[24], TIGER_CTX *context)
 
     if (context->length > 56)
     {
-        tiger_compress_gpu(context->buffer, context->state);
+        tiger_compress_gpu((uint64_t *)context->buffer, context->state); // Explicit cast
         memset(context->buffer, 0, 56);
     }
 
@@ -451,7 +455,7 @@ void TIGER192Final_host(unsigned char digest[24], TIGER_CTX *context)
         context->buffer[56 + i] = (bits >> (i * 8)) & 0xFF;
     }
 
-    tiger_compress_gpu(context->buffer, context->state);
+    tiger_compress_gpu((uint64_t *)context->buffer, context->state); // Explicit cast
 
     for (int i = 0; i < 24; i++)
     {
