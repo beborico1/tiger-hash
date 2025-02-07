@@ -9,7 +9,7 @@ CUDA_ARCH ?= -arch=sm_89
 
 # Source files
 CUDA_SOURCE = tiger_cuda.cu
-C_SOURCES = tiger.c tiger_impl.c tiger_tables.c
+C_SOURCES = tiger.c tiger_impl.c
 
 # Object files
 CUDA_OBJECT = $(CUDA_SOURCE:.cu=.o)
