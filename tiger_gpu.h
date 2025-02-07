@@ -19,9 +19,9 @@ extern "C"
     } GPU_TIGER_CTX;
 
     // Device functions
-    void TIGERInit_gpu(GPU_TIGER_CTX *context);
-    void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len);
-    void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
+    __device__ void TIGERInit_gpu(GPU_TIGER_CTX *context);
+    __device__ void TIGERUpdate_gpu(GPU_TIGER_CTX *context, const unsigned char *input, size_t len);
+    __device__ void TIGER192Final_gpu(unsigned char digest[24], GPU_TIGER_CTX *context);
 
     // Host wrapper functions
     void initialize_gpu_tables(void);
