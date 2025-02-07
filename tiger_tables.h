@@ -17,12 +17,14 @@
 
 // tiger_tables.h
 
+#define L64(x) x##ULL
+
 #define t1 (table)
 #define t2 (table + 256)
 #define t3 (table + 256 * 2)
 #define t4 (table + 256 * 3)
 
-extern const uint64_t tiger_sboxes3[1024] = {
+static const uint64_t tiger_sboxes3[1024] = {
 	L64(0x02AAB17CF7E90C5E) /*    0 */,
 	L64(0xAC424B03E243A8EC) /*    1 */,
 	L64(0x72CD5BE30DD5FCD3) /*    2 */,
