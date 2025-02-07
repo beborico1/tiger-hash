@@ -1,5 +1,7 @@
 #include "tiger.h"
 
+// tiger.c
+
 // Tiger tables from the header file
 extern const uint64_t table[4 * 256];
 

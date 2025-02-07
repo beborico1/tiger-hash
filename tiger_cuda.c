@@ -1,3 +1,4 @@
+// tiger_cuda.c
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include <stdio.h>
