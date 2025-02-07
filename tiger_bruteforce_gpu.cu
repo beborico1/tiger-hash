@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "tiger_gpu.h"
 #include <cuda_runtime.h>
 #include "tiger.h"
 
