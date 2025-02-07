@@ -5,6 +5,6 @@
 
 #define L64(x) x##ULL
 
-const uint64_t table[4 * 256];
+extern const uint64_t table[4 * 256];
 
 #endif /* TIGER_TABLES_H */
