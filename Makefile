@@ -8,27 +8,27 @@ NVCCFLAGS = -O3 -I.
 CUDA_ARCH ?= -arch=sm_89
 
 # Source files
-CUDA_SOURCES = tiger_gpu.cu tiger_bruteforce_gpu.cu
-C_SOURCES = tiger.c
+CUDA_SOURCE = tiger_bruteforce_gpu.cu
+C_SOURCE = tiger.c
 
 # Object files
-CUDA_OBJECTS = $(CUDA_SOURCES:.cu=.o)
-C_OBJECTS = $(C_SOURCES:.c=.o)
+CUDA_OBJECT = $(CUDA_SOURCE:.cu=.o)
+C_OBJECT = $(C_SOURCE:.c=.o)
 
 # Target executable
 TARGET = tiger_bruteforce_gpu
 
 all: $(TARGET)
 
-# Compile CUDA sources
-%.o: %.cu
+# Compile CUDA source
+$(CUDA_OBJECT): $(CUDA_SOURCE)
 	$(NVCC) $(NVCCFLAGS) $(CUDA_ARCH) -c $< -o $@
 
-# Compile C sources
-%.o: %.c
+# Compile C source
+$(C_OBJECT): $(C_SOURCE)
 	$(CC) $(CCFLAGS) -c $< -o $@
 
-$(TARGET): $(CUDA_OBJECTS) $(C_OBJECTS)
+$(TARGET): $(CUDA_OBJECT) $(C_OBJECT)
 	$(NVCC) $(NVCCFLAGS) $(CUDA_ARCH) -o $@ $^
 
 clean:
